@@ -173,8 +173,11 @@ The last row is the most instructive. Removing consensus features and blending t
 
 ```bash
 cd code
-python predict.py --method submission.py --checkpoint artifacts/efull   --split test --output runs/test-predictions.json
-python score_predictions.py --split test   --predictions runs/test-predictions.json --output runs/test-score.json
+OMP_NUM_THREADS=4 OPENBLAS_NUM_THREADS=4 MKL_NUM_THREADS=4 \
+python predict.py --method submission.py --checkpoint artifacts/efull \
+  --split test --output runs/test-predictions.json
+python score_predictions.py --split test \
+  --predictions runs/test-predictions.json --output runs/test-score.json
 ```
 
 Validation uses `--split validation`; the recorded outputs are 746/798 and 396/467 and are kept in `records/official/`. The checkpoint is `code/artifacts/efull/` (five `.pt` files); SHA-256 prefixes are `810201776e0ca0b7`, `bad849712771ccba`, `b08ad13384729a33`, `c1dadccaf63fd3ef`, `6f7585613221dc7e`. Training code is `code/train_efull.py`; data and the parser are unmodified. Figures rebuild with `cd report && python make_figs.py`, which reads `records/probs/`, `records/aggregation_curve.json` and `records/ablation_table.json`.
