@@ -12,8 +12,7 @@ answer-group aggregation at decision time.
 **Prediction + scoring:** **4.0–5.7 s** for the complete 467-question test bank with four
 threads (limit 30 s), measured on an AMD Ryzen 7 8845HS.
 
-Report: [`report/MP2-report.pdf`](report/MP2-report.pdf) (7 pages, English) and
-[`report/MP2-report-zh.pdf`](report/MP2-report-zh.pdf) (6 pages, Chinese).
+Report: [`report/MP2-report.pdf`](report/MP2-report.pdf) (7 pages).
 
 ## Repository layout
 
