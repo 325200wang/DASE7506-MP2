@@ -1,0 +1,6 @@
+# Supplied data files are hash-checked by code/check_data.py; never rewrite their bytes.
+code/data/** -text -diff
+
+# Keep Python sources checkout-neutral.
+*.py text
+*.md text

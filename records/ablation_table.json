@@ -1,0 +1,65 @@
+[
+  {
+    "kind": "embed",
+    "overall": 92.10526315789474,
+    "hard": 82.25352112676056,
+    "trap": 63.33333333333333,
+    "trap_correct": 38,
+    "trap_n": 60,
+    "dim": 0
+  },
+  {
+    "kind": "surface",
+    "overall": 92.23057644110276,
+    "hard": 82.53521126760563,
+    "trap": 65.0,
+    "trap_correct": 39,
+    "trap_n": 60,
+    "dim": 0
+  },
+  {
+    "kind": "noarith",
+    "overall": 92.98245614035088,
+    "hard": 84.22535211267605,
+    "trap": 46.666666666666664,
+    "trap_correct": 28,
+    "trap_n": 60,
+    "dim": 0
+  },
+  {
+    "kind": "nocons",
+    "overall": 93.23308270676691,
+    "hard": 84.78873239436619,
+    "trap": 66.66666666666666,
+    "trap_correct": 40,
+    "trap_n": 60,
+    "dim": 0
+  },
+  {
+    "kind": "hand22",
+    "overall": 92.85714285714286,
+    "hard": 83.94366197183099,
+    "trap": 45.0,
+    "trap_correct": 27,
+    "trap_n": 60,
+    "dim": 0
+  },
+  {
+    "kind": "hand29",
+    "overall": 92.98245614035088,
+    "hard": 84.22535211267605,
+    "trap": 50.0,
+    "trap_correct": 30,
+    "trap_n": 60,
+    "dim": 0
+  },
+  {
+    "kind": "hand22_resmlp",
+    "overall": 91.72932330827066,
+    "hard": 81.40845070422536,
+    "trap": 30.0,
+    "trap_correct": 18,
+    "trap_n": 60,
+    "dim": 0
+  }
+]
