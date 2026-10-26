@@ -127,7 +127,8 @@ produced the reported scores; its hashes are in the table above.
 | `records/member_analysis.json` | per-member scores, pairwise agreement, oracle, calibration        |
 | `records/text_baselines.json`  | TF-IDF text-only baselines (full trace vs final answer)           |
 | `records/sweep/`               | 18-configuration hyper-parameter sweep with per-epoch curves      |
-| `records/fig_data.json`        | numbers behind Figures 1–4                                        |
+| `records/aggregation_curve.json` | validation and test accuracy against aggregation strength (0.1 grid) |
+| `records/probs/` | the five-member ensemble probabilities for both splits |
 
 ## AI and reuse
 
