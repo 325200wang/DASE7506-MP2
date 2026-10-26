@@ -22,8 +22,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
 
 import common as _common  # noqa: E402
-from common import load_inputs, read_jsonl  # noqa: E402
-from exp_baselines import label_bank  # noqa: E402
+from common import load_inputs, parse_answer, read_jsonl  # noqa: E402
 from features import hand_features  # noqa: E402
 from full_features import quantity_features, repair_features  # noqa: E402
 from models import build_model  # noqa: E402
@@ -93,6 +92,20 @@ def evaluate(logits, parsed, labels, idx):
     return {'n': len(idx), 'correct': int(correct), 'accuracy': 100 * correct / len(idx),
             'hard_n': len(hard), 'hard_correct': int(hard_correct),
             'hard_accuracy': 100 * hard_correct / len(hard) if hard else 0.0}
+
+
+def label_bank(bank, gold_rows):
+    """Align each candidate with the reference answer: (parsed, labels)."""
+    n = len(bank)
+    labels = np.zeros((n, 4), dtype=bool)
+    parsed = np.empty((n, 4), dtype=object)
+    for qi, (row, gold) in enumerate(zip(bank, gold_rows)):
+        target = parse_answer(gold['answer'])
+        for ci, candidate in enumerate(row['candidates']):
+            value = parse_answer(candidate['text'])
+            parsed[qi, ci] = value
+            labels[qi, ci] = value is not None and value == target
+    return parsed, labels
 
 
 def load_data(split):

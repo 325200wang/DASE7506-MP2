@@ -29,7 +29,7 @@ Table: Answer-pattern composition and no-model baselines.
 | $(2,1,1)$ | 88 (11.0) | 102 (21.8) | two-vote plurality |
 | $(2,2)$ | 34 (4.3) | 39 (8.4) | two versus two |
 | $(1,1,1,1)$ | 20 (2.5) | 38 (8.1) | all different |
-| other (one unparseable) | 126 (15.8) | 92 (19.7) | $(3,)$, $(2,1)$, $(1,1,1)$, $(1,1)$ |
+| other (one unparseable) | 126 (15.8) | 92 (19.7) | validation $(3,)$ 50, $(2,1)$ 28, $(1,1,1)$ 20, $(1,1)$ 14, $(2,)$ 11, $(1,)$ 3; test $(2,1)$ 50, $(1,1,1)$ 24, $(1,1)$ 18 |
 | mean correct candidates / 4 | 3.03 | 2.04 | chance 75.7 % / 51.1 % |
 | majority vote | 86.22 | 69.16 | no model |
 
@@ -43,7 +43,7 @@ Each candidate $i$ is represented by its 1024-d frozen embedding concatenated wi
 
 ## 2.2 Training
 
-Five members are trained on disjoint 4/5 splits of the 4,755 training questions (fold permutation from NumPy seed 13; model seed 37). The loss is a per-candidate BCE plus half the multi-positive mass term
+Five members are trained on the 4,755 training questions with disjoint held-out folds — each member holds out a different fifth, so the five 4/5 training subsets overlap (fold permutation from NumPy seed 13; model seed 37). The loss is a per-candidate BCE plus half the multi-positive mass term
 $\mathcal{L}_{\text{mass}} = \log\sum_j e^{s_j} - \log\sum_{j:\,y_j=1} e^{s_j}$,
 which rewards putting probability mass on *any* correct candidate rather than on one arbitrary one. Per-question weights are 2.0 for hard questions and at least 1.0 for traps. We use AdamW (lr $10^{-4}$, weight decay $10^{-3}$, gradient clipping 1.0), batch 64 and 15 epochs — roughly 900 optimiser steps per member, chosen by the validation curves in §4.3. Validation is used for development only; test references are read once, after the method was frozen.
 
@@ -53,7 +53,7 @@ Members are combined by averaging their sigmoid outputs. Let $G(i)$ be the set o
 
 $$ \tilde{s}_i = (1-a)\,s_i + a \cdot \frac{1}{|G(i)|}\sum_{j \in G(i)} s_j, \qquad a = 0.6, $$
 
-and returns the argmax over parseable candidates. Two properties make this rule more than a smoothing trick. First, **within-group order is preserved**: the transformation adds the same constant to every member of a group, so the model still decides *which* of the agreeing candidates is best. Only the comparison *between* answer groups changes. Second, it is therefore a group-level prior: an answer stated by several independently high-scoring candidates outranks a singleton that one candidate scored slightly higher. The scorer's own metric is answer-level, so this is the natural place to put such a prior.
+and returns the argmax over parseable candidates. The strength was fixed on validation alone, over the grid $a \in \{0, 0.1, \dots, 1.0\}$: every value in $[0.4, 0.9]$ ties the validation maximum (746/798, hard 303/355), and the pre-declared tie-break is highest validation trap accuracy (36/60, reached from $a \ge 0.6$), then the smallest $a$, which gives 0.6. Two properties make this rule more than a smoothing trick. First, **within-group order is preserved**: the transformation adds the same constant to every member of a group, so the model still decides *which* of the agreeing candidates is best. Only the comparison *between* answer groups changes. Second, it is therefore a group-level prior: an answer stated by several independently high-scoring candidates outranks a singleton that one candidate scored slightly higher. The scorer's own metric is answer-level, so this is the natural place to put such a prior.
 
 # 3. Results
 
@@ -64,13 +64,13 @@ Table: Progression, same splits throughout.
 | Configuration | Val overall | Val hard | Test overall | Test trap |
 |-----------------------------------|------:|------:|------:|------:|
 | single member, mean of five | 93.01 | 84.28 | 81.93 | 28.6/71 |
-| single member, best | 93.48 | 85.35 | 83.94 | 37/71 |
+| single member, best on validation (f1, plain argmax) | 93.48 | 85.35 | 81.58 | 30/71 |
 | five-member ensemble, plain argmax | 93.36 | 85.07 | 82.87 | 30/71 |
 | + aggregation $a=0.4$ | 93.48 | 85.35 | 84.15 | 35/71 |
 | **+ aggregation $a=0.6$ (submitted)** | **93.48** | **85.35** | **84.80** | **39/71** |
-| + aggregation $a=1.0$ | 93.36 | 85.07 | 84.37 | 40/71 |
+| + aggregation $a=1.0$ | 93.36 | 85.07 | 84.37 | 41/71 |
 
-The gain is entirely in traps. Non-trap test accuracy is 357/396 = 90.15 % both before and after; trap accuracy rises from 30/71 to 39/71. On validation the same rule loses two non-trap questions and gains three trap questions (269 → 267 and 33 → 36), which is why the validation curve in Figure 2(a) is almost flat while the test curve is not: validation's trap share (7.5 %) is much smaller than test's (15.2 %).
+The gain is entirely in traps. Non-trap test accuracy is 357/396 = 90.15 % both before and after; trap accuracy rises from 30/71 to 39/71. On validation the same rule loses two hard non-trap questions and gains three trap questions (hard non-trap 269 → 267, trap 33 → 36; over the full split, non-trap 712 → 710). That flatness is why the validation curve in Figure 2(a) barely moves while the test curve does: validation's trap share (7.5 %) is much smaller than test's (15.2 %).
 
 ![(a) Overall accuracy against aggregation strength. Validation is flat over $a \in [0.4, 0.9]$ (shaded), so the rule was fixed by tie-break inside that plateau. (b) The same sweep by trap accuracy; almost all movement is on the trap subset.](figs/fig2_aggregation.png){width=90%}
 
@@ -130,7 +130,7 @@ Two entries deserve comment. The batch sweep was run to test the hypothesis that
 
 ![Reliability of the submitted selector. Bin counts printed; the diagonal is perfect calibration.](figs/fig4_calibration.png){width=90%}
 
-**Where the errors are.** Of the 71 test errors, 32 are traps and 39 are not. The five members agree on 83.7 % of test questions and their errors are highly correlated: the oracle over the five reaches 87.58 %, the ensemble 84.80 %, so the ensemble captures about half of the available member diversity. That is the honest ceiling of this family of models: no amount of further seed averaging will close the remaining gap, because the members share the same inputs and the same inductive bias.
+**Where the errors are.** Of the 71 test errors, 32 are traps and 39 are not. The five members agree pairwise on 83.8 % of test questions (all five choose the same candidate on 68.3 %), and their errors are highly correlated: the oracle over the five reaches 87.58 %, the ensemble 84.80 %, so the ensemble captures about half of the available member diversity. That is the honest ceiling of this family of models: no amount of further seed averaging will close the remaining gap, because the members share the same inputs and the same inductive bias.
 
 **What the model actually compares.** Because the scorer only checks final answers, a candidate can be selected for the right answer and the wrong reason. Our ablations show the selector's decision is driven by the trace embedding (removing all 22 text features costs 0.75 pp overall and 1.7 pp of hard accuracy) and by agreement, and only weakly by surface form. It re-checks arithmetic inside each trace through the equation and chain features, and the resulting signal is real but small: adding the seven symbolic features to the 22 changes validation hard by +0.3 pp.
 
@@ -172,16 +172,14 @@ The last row is the most instructive. Removing consensus features and blending t
 **Reproduction.**
 
 ```bash
-python qctext/make_submission_final.py          # writes predictions from checkpoint/
 cd code
-python predict.py --method ../qctext/submission.py --checkpoint ../qctext/checkpoint \
-  --split test --output ../qctext/runs/repro_test-predictions.json
-python score_predictions.py --split test \
-  --predictions ../qctext/runs/repro_test-predictions.json \
-  --output ../qctext/runs/repro_test-score.json
+python predict.py --method submission.py --checkpoint artifacts/efull   --split test --output runs/test-predictions.json
+python score_predictions.py --split test   --predictions runs/test-predictions.json --output runs/test-score.json
 ```
 
-Validation uses `--split validation`; the recorded outputs are 746/798 and 396/467. The checkpoint is `qctext/checkpoint/` (five `.pt` files); SHA-256 prefixes are `810201776e0ca0b7`, `bad849712771ccba`, `b08ad13384729a33`, `c1dadccaf63fd3ef`, `6f7585613221dc7e`. Training code is `qctext/train_efull.py`; data and the parser are unmodified.
+Validation uses `--split validation`; the recorded outputs are 746/798 and 396/467 and are kept in `records/official/`. The checkpoint is `code/artifacts/efull/` (five `.pt` files); SHA-256 prefixes are `810201776e0ca0b7`, `bad849712771ccba`, `b08ad13384729a33`, `c1dadccaf63fd3ef`, `6f7585613221dc7e`. Training code is `code/train_efull.py`; data and the parser are unmodified. Figures rebuild with `cd report && python make_figs.py`, which reads `records/probs/`, `records/aggregation_curve.json` and `records/ablation_table.json`.
+
+Retraining reproduces the recipe but not the shipped weights bit for bit: the members were trained on a GPU and the script falls back to CPU, and the two differ in floating-point reduction order. A CPU retrain of fold 0 scores 863/951 on its held-out fold against 860/951 for the shipped member, and 392/467 against 396/467 on test. Scores should be reproduced from the shipped checkpoint, not from a retrain.
 
 **Disclosure.** AI coding assistance was used for implementation, experiment orchestration and report drafting; the design decisions, the selection protocol and every reported number were checked by the author against the recorded outputs. No external data, no pretrained weights and no reference-answer lookups are used at inference.
 
@@ -189,4 +187,4 @@ Validation uses `--split validation`; the recorded outputs are 746/798 and 396/4
 
 The task rewards answer-level judgement, and the strongest lever we found is not a bigger model but a decision rule that matches the metric: pooling candidates that agree, then choosing within the winning group. It is worth +1.93 pp on test and costs nothing at inference. The input ablation explains both why it works and why the obvious alternative does not: consensus as a *feature* teaches the model to follow majorities, which is wrong exactly on traps, whereas consensus as a *decision prior* keeps the per-candidate comparison intact.
 
-The remaining error is concentrated in traps (32 of 71 test errors) and in correlated member failures: five members agree on 83.7 % of questions and their oracle is only 2.8 pp above the ensemble. Closing that gap needs information the frozen 1024-d trace does not carry, and every feature family we built to supply it — arithmetic repair, quantity, program compatibility, relative views, stacked metas — failed to transfer. The honest summary is that this method is at the ceiling of its representation, and that the last two points are an information problem rather than an optimisation one.
+The remaining error is concentrated in traps (32 of 71 test errors) and in correlated member failures: the members agree pairwise on 83.8 % of questions (all five on 68.3 %) and their oracle is only 2.8 pp above the ensemble. Closing that gap needs information the frozen 1024-d trace does not carry, and every feature family we built to supply it — arithmetic repair, quantity, program compatibility, relative views, stacked metas — failed to transfer. The honest summary is that this method is at the ceiling of its representation, and that the last two points are an information problem rather than an optimisation one.

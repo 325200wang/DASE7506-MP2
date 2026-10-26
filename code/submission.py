@@ -12,9 +12,10 @@ pooled:
     score_j = (1 - a) * p_j + a * mean(p over the same-answer group)
 
 and the argmax over parseable candidates is returned.  Unparseable candidates can
-never be selected.  ``a = 0.6`` was fixed on the official validation split before the
-test split was scored, on the tie-break "top validation overall (746/798, tied for
-every a in [0.4, 0.9]), then highest validation trap accuracy, then smallest a".
+never be selected.  ``a`` was fixed on the official validation split before the test
+split was scored, over the grid {0, 0.1, ..., 1.0}: every value in [0.4, 0.9] ties the
+validation maximum (746/798), and the tie-break is the highest validation trap accuracy
+(36/60, reached from a >= 0.6), then the smallest a, which gives 0.6.
 
 No external data, no pretrained weights, no reference-answer lookups.  Inference is
 pure PyTorch on CPU.  See report/MP2-report.pdf for the experiments behind it.

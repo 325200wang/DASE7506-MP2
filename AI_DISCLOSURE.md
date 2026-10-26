@@ -21,9 +21,9 @@ AI coding assistance (an agentic coding assistant) was used throughout this proj
 
 - Course-supplied files (`guide/GUIDE.md`, `code/common.py`, `code/predict.py`,
   `code/score_predictions.py`, `code/check_data.py`, `code/data/`) are unchanged.
-- `code/features.py`, `code/models.py`, `code/symverify.py`, `code/exp_baselines.py`,
-  `code/full_features.py`, `code/qctext_metrics.py`, `code/train_efull.py` and
-  `code/submission.py` were written for this project.
+- `code/features.py`, `code/models.py`, `code/symverify.py`, `code/full_features.py`,
+  `code/qctext_metrics.py`, `code/train_efull.py` and `code/submission.py` were written for
+  this project.
 - No external datasets and no pretrained model weights are used. All learned parameters are
   trained from the supplied training split only.
 - Questions and references derive from GSM8K (MIT licence). Candidate solutions and the fixed

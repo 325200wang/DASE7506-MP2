@@ -1,4 +1,10 @@
-"""Figures for the final MP2 report (E-full + answer-group aggregation)."""
+"""Rebuild the four report figures from the records shipped in this repository.
+
+    cd report && python make_figs.py
+
+Inputs: records/probs/*.npy, records/aggregation_curve.json,
+records/ablation_table.json. Output: figs/*.png
+"""
 import json
 import sys
 from collections import Counter, defaultdict
@@ -14,11 +20,10 @@ ROOT = HERE.parent
 FIG = HERE / 'figs'
 FIG.mkdir(parents=True, exist_ok=True)
 sys.path.insert(0, str(ROOT / 'code'))
-sys.path.insert(0, str(ROOT / 'qctext'))
 
 from common import DATA, load_inputs, parse_answer, read_jsonl  # noqa: E402
 from qctext_metrics import trap_ids  # noqa: E402
-from exp_baselines import label_bank  # noqa: E402
+import submission as S  # noqa: E402
 
 plt.rcParams.update({'font.size': 9, 'axes.spines.top': False, 'axes.spines.right': False,
                      'figure.dpi': 200, 'savefig.bbox': 'tight'})
@@ -27,41 +32,20 @@ AGG = 0.6
 PATTERNS = [(3, 1), (2, 1, 1), (2, 2), (1, 1, 1, 1)]
 
 
-def aggregation(scores, parsed, a):
-    out = np.asarray(scores, dtype=np.float64).copy()
-    for i in range(len(parsed)):
-        groups = defaultdict(list)
-        for j, v in enumerate(parsed[i]):
-            if v is not None:
-                groups[v].append(j)
-        for members in groups.values():
-            mean = out[i, members].mean()
-            for j in members:
-                out[i, j] = (1 - a) * out[i, j] + a * mean
-        for j, v in enumerate(parsed[i]):
-            if v is None:
-                out[i, j] = -1e9
-    return out
-
-
-def picks(scores, parsed):
-    out = []
-    for i in range(len(parsed)):
-        best, best_score = -1, -np.inf
-        for j in range(4):
-            if parsed[i][j] is None:
-                continue
-            if scores[i, j] > best_score:
-                best_score, best = scores[i, j], j
-        out.append(best if best >= 0 else 0)
-    return np.array(out)
-
-
 def load_split(split):
     bank, _ = load_inputs(split)
     gold = read_jsonl(DATA / f'gsm8k_{split}.jsonl')
-    parsed, labels = label_bank(bank, gold)
-    return bank, parsed, labels
+    parsed = S._parsed(bank)
+    labels = np.zeros((len(bank), 4), dtype=bool)
+    for i, g in enumerate(gold):
+        ga = parse_answer(g['answer'])
+        for j in range(4):
+            labels[i, j] = parsed[i, j] is not None and parsed[i, j] == ga
+    probs = np.load(ROOT / 'records' / 'probs' / f'efull_{split}_probs.npy')
+    picks = S._choose(probs, parsed, AGG)
+    correct = np.array([bool(labels[i, picks[i]]) for i in range(len(bank))])
+    return dict(bank=bank, parsed=parsed, labels=labels, probs=probs,
+                picks=picks, correct=correct)
 
 
 def pattern_of(row):
@@ -70,17 +54,10 @@ def pattern_of(row):
 
 
 def main():
-    data = {}
-    for split, path in (('validation', ROOT / 'qctext/runs/efull_validation-predictions_probs.npy'),
-                        ('test', ROOT / 'qctext/runs/efull_test_probs.npy')):
-        bank, parsed, labels = load_split(split)
-        probs = np.load(path)[:len(bank)]
-        chosen = picks(aggregation(probs, parsed, AGG), parsed)
-        correct = np.array([bool(labels[i, chosen[i]]) for i in range(len(bank))])
-        data[split] = dict(bank=bank, parsed=parsed, labels=labels, probs=probs,
-                           chosen=chosen, correct=correct)
+    data = {s: load_split(s) for s in ('validation', 'test')}
+    curve = json.loads((ROOT / 'records' / 'aggregation_curve.json').read_text())
 
-    # ---------- Figure 1: pattern composition and accuracy -------------------
+    # ---------- Figure 1: pattern mixture and accuracy -----------------------
     fig, axs = plt.subplots(1, 2, figsize=(7.0, 2.7), gridspec_kw={'width_ratios': [1, 1.25]})
     ax = axs[0]
     vcount = Counter(pattern_of(r) for r in data['validation']['parsed'])
@@ -117,37 +94,24 @@ def main():
     fig.tight_layout()
     fig.savefig(FIG / 'fig1_patterns.png'); plt.close(fig)
 
-    # ---------- Figure 2: aggregation strength ------------------------------
-    grid = np.round(np.arange(0, 1.001, 0.05), 2)
-    vcurve, tcurve, vtrap, ttrap = [], [], [], []
-    for a in grid:
-        vp = picks(aggregation(data['validation']['probs'], data['validation']['parsed'], a),
-                   data['validation']['parsed'])
-        tp = picks(aggregation(data['test']['probs'], data['test']['parsed'], a),
-                   data['test']['parsed'])
-        vcurve.append(100 * np.mean([data['validation']['labels'][i, vp[i]]
-                                     for i in range(798)]))
-        tcurve.append(100 * np.mean([data['test']['labels'][i, tp[i]] for i in range(467)]))
-        vtr = trap_ids(data['validation']['parsed'], data['validation']['labels'])
-        ttr = trap_ids(data['test']['parsed'], data['test']['labels'])
-        vtrap.append(100 * np.mean([data['validation']['labels'][i, vp[i]] for i in vtr]))
-        ttrap.append(100 * np.mean([data['test']['labels'][i, tp[i]] for i in ttr]))
-
+    # ---------- Figure 2: aggregation strength (0.1 grid) -------------------
+    grid = np.array(curve['a'])
     fig, axs = plt.subplots(1, 2, figsize=(7.0, 2.6))
     ax = axs[0]
-    ax.plot(grid, vcurve, 'o-', ms=2.5, lw=1.2, color='#4C72B0', label='validation')
-    ax.plot(grid, tcurve, 's-', ms=2.5, lw=1.2, color='#DD8452', label='test')
+    ax.plot(grid, curve['validation'], 'o-', ms=3.5, lw=1.2, color='#4C72B0', label='validation')
+    ax.plot(grid, curve['test'], 's-', ms=3.5, lw=1.2, color='#DD8452', label='test')
     ax.axvspan(0.4, 0.9, color='0.9', zorder=0)
     ax.axvline(AGG, ls='--', lw=0.9, color='0.35')
-    ax.annotate('selected $a$=0.6', xy=(AGG, tcurve[12]), xytext=(0.08, 85.6),
+    ax.annotate('selected $a$=0.6', xy=(AGG, curve['test'][6]), xytext=(0.05, 85.6),
                 fontsize=7.5, arrowprops=dict(arrowstyle='->', lw=0.7, color='0.35'))
     ax.set_xlabel('answer-group aggregation strength $a$')
     ax.set_ylabel('overall accuracy (%)')
-    ax.set_title('(a) validation plateau 0.4-0.9 (shaded)', fontsize=9)
+    ax.set_title('(a) validation ties over $a\\in[0.4,0.9]$ (shaded)', fontsize=9)
     ax.legend(frameon=False, fontsize=7.5, loc='center right')
     ax = axs[1]
-    ax.plot(grid, vtrap, 'o-', ms=2.5, lw=1.2, color='#4C72B0', label='validation')
-    ax.plot(grid, ttrap, 's-', ms=2.5, lw=1.2, color='#DD8452', label='test')
+    ax.plot(grid, curve['validation_trap'], 'o-', ms=3.5, lw=1.2, color='#4C72B0', label='validation')
+    ax.plot(grid, curve['test_trap'], 's-', ms=3.5, lw=1.2, color='#DD8452', label='test')
+    ax.axvspan(0.4, 0.9, color='0.9', zorder=0)
     ax.axvline(AGG, ls='--', lw=0.9, color='0.35')
     ax.set_xlabel('$a$'); ax.set_ylabel('trap accuracy (%)')
     ax.set_title('(b) the gain is concentrated in traps', fontsize=9)
@@ -155,55 +119,26 @@ def main():
     fig.tight_layout()
     fig.savefig(FIG / 'fig2_aggregation.png'); plt.close(fig)
 
-    # ---------- Figure 3: input ablation ------------------------------------
-    ab = ROOT / 'qctext/runs/ablation'
-    _, vparsed, vlabels = load_split('validation')
-    vhard = [i for i in range(len(vparsed))
-             if len(set(v for v in vparsed[i] if v is not None)) > 1]
-    vtraps = trap_ids(vparsed, vlabels)
-    table = []
-    for kind in ('embed', 'surface', 'noarith', 'nocons', 'hand22', 'hand29'):
-        path = ab / f'{kind}_setattn_validation_probs.npy'
-        if not path.exists():
-            continue
-        probs = np.load(path)[:len(vparsed)]
-        logits = np.log(np.clip(probs, 1e-9, 1.0))
-        chosen = picks(aggregation(probs, vparsed, 0.0), vparsed)
-        overall = 100 * np.mean([vlabels[i, chosen[i]] for i in range(len(vparsed))])
-        hard = 100 * np.mean([vlabels[i, chosen[i]] for i in vhard])
-        tr = 100 * np.mean([vlabels[i, chosen[i]] for i in vtraps])
-        table.append(dict(kind=kind, overall=overall, hard=hard, trap=tr,
-                          trap_correct=int(sum(vlabels[i, chosen[i]] for i in vtraps)),
-                          trap_n=len(vtraps), dim=int(probs.shape[0] and 0)))
-    resmlp_path = ab / 'hand22_resmlp_validation_probs.npy'
-    if resmlp_path.exists():
-        probs = np.load(resmlp_path)[:len(vparsed)]
-        chosen = picks(aggregation(probs, vparsed, 0.0), vparsed)
-        table.append(dict(kind='hand22_resmlp',
-                          overall=100 * np.mean([vlabels[i, chosen[i]] for i in range(len(vparsed))]),
-                          hard=100 * np.mean([vlabels[i, chosen[i]] for i in vhard]),
-                          trap=100 * np.mean([vlabels[i, chosen[i]] for i in vtraps]),
-                          trap_correct=int(sum(vlabels[i, chosen[i]] for i in vtraps)),
-                          trap_n=len(vtraps), dim=0))
-    (HERE / 'ablation_table.json').write_text(json.dumps(table, indent=2), encoding='utf-8')
-
-    label = {'embed': 'embedding only', 'surface': 'embedding + surface (5)',
+    # ---------- Figure 3: input and architecture ablation -------------------
+    rows = json.loads((ROOT / 'records' / 'ablation_table.json').read_text())
+    label = {'embed': 'embedding only',
+             'surface': 'embedding + surface (5)',
              'noarith': 'embedding + hand, no arithmetic',
              'nocons': 'embedding + hand, consensus zeroed',
              'hand22': 'embedding + hand (22) [control]',
              'hand29': 'embedding + hand + symbolic (29)',
              'hand22_resmlp': 'independent scorer (same features)'}
-    y = np.arange(len(table))
+    y = np.arange(len(rows))
     fig, ax = plt.subplots(figsize=(7.0, 3.2))
     h = 0.26
-    ax.barh(y + h, [r['overall'] for r in table], h, color='#8EAADB', label='overall')
-    ax.barh(y, [r['hard'] for r in table], h, color='#4C72B0', label='hard')
-    ax.barh(y - h, [r['trap'] for r in table], h, color='#DD8452', label='trap')
-    for i, r in enumerate(table):
+    ax.barh(y + h, [r['overall'] for r in rows], h, color='#8EAADB', label='overall')
+    ax.barh(y, [r['hard'] for r in rows], h, color='#4C72B0', label='hard')
+    ax.barh(y - h, [r['trap'] for r in rows], h, color='#DD8452', label='trap')
+    for i, r in enumerate(rows):
         ax.text(max(r['overall'] + 0.6, 36.5), i + h, f"{r['overall']:.1f}", va='center', fontsize=7)
         ax.text(max(r['hard'] + 0.6, 36.5), i, f"{r['hard']:.1f}", va='center', fontsize=7)
         ax.text(max(r['trap'] + 0.6, 36.5), i - h, f"{r['trap']:.1f}", va='center', fontsize=7)
-    ax.set_yticks(y); ax.set_yticklabels([label[r['kind']] for r in table], fontsize=7.5)
+    ax.set_yticks(y); ax.set_yticklabels([label[r['kind']] for r in rows], fontsize=7.5)
     ax.invert_yaxis(); ax.set_xlim(35, 108)
     ax.set_xlabel('validation accuracy (%)')
     ax.set_title('Input and architecture ablation (validation)', fontsize=9)
@@ -215,10 +150,18 @@ def main():
     # ---------- Figure 4: calibration ---------------------------------------
     fig, axs = plt.subplots(1, 2, figsize=(6.8, 2.7))
     edges = [0.30, 0.50, 0.70, 0.80, 0.90, 1.001]
-    calib = {}
     for ax, split, colour, tag in ((axs[0], 'validation', '#4C72B0', 'a'),
                                    (axs[1], 'test', '#DD8452', 'b')):
-        scores = aggregation(data[split]['probs'], data[split]['parsed'], AGG)
+        scores = np.asarray(data[split]['probs'], dtype=np.float64).copy()
+        for i in range(len(data[split]['parsed'])):
+            groups = defaultdict(list)
+            for j, v in enumerate(data[split]['parsed'][i]):
+                if v is not None:
+                    groups[v].append(j)
+            for members in groups.values():
+                mean = scores[i, members].mean()
+                for j in members:
+                    scores[i, j] = (1 - AGG) * scores[i, j] + AGG * mean
         conf = scores.max(axis=1)
         correct = data[split]['correct']
         xs, ys, ns, ece = [], [], [], 0.0
@@ -236,17 +179,8 @@ def main():
         ax.set_ylabel('selection accuracy (%)')
         ax.set_xlim(30, 100); ax.set_ylim(40, 105)
         ax.set_title(f'({tag}) {split}  (ECE {ece:.2f}, n={len(conf)})', fontsize=9)
-        calib[split] = dict(x=xs, y=ys, n=ns, ece=ece)
     fig.tight_layout()
     fig.savefig(FIG / 'fig4_calibration.png'); plt.close(fig)
-
-    summary = {
-        'validation': dict(overall=100 * data['validation']['correct'].mean()),
-        'test': dict(overall=100 * data['test']['correct'].mean()),
-        'aggregation_curve': {'a': grid.tolist(), 'validation': vcurve, 'test': tcurve,
-                              'validation_trap': vtrap, 'test_trap': ttrap},
-    }
-    (HERE / 'fig_data.json').write_text(json.dumps(summary, indent=2), encoding='utf-8')
     print('figures written', sorted(p.name for p in FIG.glob('*.png')))
 
 

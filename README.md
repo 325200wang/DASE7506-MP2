@@ -28,10 +28,9 @@ unchanged.
 │   ├── features.py                 our 29 reference-free text features
 │   ├── models.py                   our set-attention / ResMLP / DeepSets scorers
 │   ├── symverify.py                our lightweight symbolic trace checker
-│   ├── train_efull.py              our training script
+│   ├── train_efull.py              our training script (numpy + torch only)
 │   ├── full_features.py            our quantity / repair features (ablation)
 │   ├── qctext_metrics.py           our evaluation metrics (trap definition, comp4)
-│   ├── exp_baselines.py            our label alignment helper
 │   ├── artifacts/efull/*.pt        the five trained members (3.91 MiB)
 │   ├── data/                       supplied data, unchanged
 │   └── …                           supplied runner, scorer and data tools
@@ -84,6 +83,12 @@ Weights land in `code/runs/efull/`. About 8 s per member on an RTX 3070 Laptop G
 80 s per member on the CPU used for the ablations. Fold splits come from
 `numpy.random.default_rng(13)`; the model seed is `torch.manual_seed(37)`.
 
+Retraining reproduces the recipe but **not the shipped weights bit for bit**: the members were
+trained on a GPU, and a CPU run differs in floating-point reduction order. A CPU retrain of
+fold 0 scores 863/951 on its held-out fold (shipped member: 860/951) and 392/467 on test
+(shipped ensemble: 396/467). Reproduce the reported score from `code/artifacts/efull/`, not
+from a retrain.
+
 **Checkpoint identity** (`code/artifacts/efull/`):
 
 | File              | Bytes   | SHA-256                                                            |
@@ -101,12 +106,17 @@ reference-free text features (parseability, three consensus statistics, length a
 density, formatting flags, equation re-checking counts, question-number coverage, four
 chain-consistency scalars). A permutation-equivariant set-attention network (width 128, two
 layers, four heads, GELU, dropout 0.2) maps the four candidates to four logits. Five members
-trained on disjoint 4/5 splits are averaged in probability space. Candidates stating the same
+with disjoint held-out folds are averaged in probability space. Candidates stating the same
 parsed final answer are then partially pooled, `score_j = (1-a) p_j + a * mean(group)`, with
 `a = 0.6`, and the argmax over parseable candidates is returned. The pooling preserves
 within-group order and changes only the comparison between answer groups. `a` was fixed on
-validation before test was scored: every value in `[0.4, 0.9]` ties the validation maximum, and
-the tie-break was highest validation trap accuracy, then smallest `a`.
+validation before test was scored, over the grid `{0, 0.1, ..., 1.0}`: every value in
+`[0.4, 0.9]` ties the validation maximum (746/798), and the tie-break is highest validation
+trap accuracy (36/60, from `a >= 0.6`), then the smallest `a`, giving 0.6. The full curve is in
+`records/aggregation_curve.json`.
+
+**Submitted code version.** Tag `v1`. The checkpoint in `code/artifacts/efull/` is the one that
+produced the reported scores; its hashes are in the table above.
 
 ## Records
 
